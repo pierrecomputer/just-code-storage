@@ -76,6 +76,50 @@ describe('createGitCommand phase 0', () => {
     });
   });
 
+  test('routes every supported operational subcommand', async () => {
+    const command = createGitCommand({
+      store: {
+        createRepo: async () => makeRepo(new MockCommitBuilder()),
+        findOne: async () => null,
+      } as never,
+      repo: makeRepo(new MockCommitBuilder()),
+    });
+    const ctx = makeCtx({ '/README.md': '# Hello code.storage\n' });
+    const knownSubcommands = [
+      ['init'],
+      ['add'],
+      ['rm'],
+      ['commit'],
+      ['status'],
+      ['log'],
+      ['show'],
+      ['cat-file'],
+      ['ls-files'],
+      ['ls-tree'],
+      ['blame'],
+      ['rev-parse'],
+      ['grep'],
+      ['diff'],
+      ['branch'],
+      ['tag'],
+      ['checkout'],
+      ['switch'],
+      ['merge'],
+      ['clone'],
+      ['pull'],
+      ['push'],
+      ['fetch'],
+    ];
+
+    for (const args of knownSubcommands) {
+      const result = await command.execute(args, ctx);
+
+      expect(result.stderr).not.toBe(
+        `git: '${args[0]}' is not a git command. See 'git --help'.\n`
+      );
+    }
+  });
+
   test('requires commit messages', async () => {
     const repo = makeRepo(new MockCommitBuilder());
     const command = createGitCommand({
