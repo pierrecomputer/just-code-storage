@@ -36,6 +36,8 @@ this package, and `GitStorage` is re-exported for convenience.
 
 ## Usage
 
+You need a Pierre org name and private key to create the SDK client.
+
 ```ts
 import { Bash } from 'just-bash';
 import { GitStorage, createGitCommand } from 'just-code-storage';
@@ -45,16 +47,16 @@ const store = new GitStorage({
   key: process.env.PIERRE_PRIVATE_KEY!,
 });
 
+const git = createGitCommand({
+  store,
+  author: {
+    name: 'agent',
+    email: 'agent@example.com',
+  },
+});
+
 const bash = new Bash({
-  customCommands: [
-    createGitCommand({
-      store,
-      author: {
-        name: 'agent',
-        email: 'agent@example.com',
-      },
-    }),
-  ],
+  customCommands: [git],
 });
 
 await bash.exec('git init my-repo');
@@ -63,6 +65,10 @@ await bash.exec('git add file.txt');
 await bash.exec("git commit -m 'initial'");
 await bash.exec('git log --oneline');
 ```
+
+Create one `git` command per session and reuse it with the same `Bash` instance.
+The command keeps the selected repo, current branch, staged paths, and cloned
+working directory in memory between `bash.exec()` calls.
 
 Once registered, the command works like any other `just-bash` command:
 
@@ -145,17 +151,6 @@ Optional environment variables:
 - `CODE_STORAGE_STORAGE_BASE_URL`: override the storage endpoint.
 - `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`: set the commit author used by the
   demo.
-
-## Publishing
-
-Applicable to the Pierre team only.
-
-```bash
-bun run build
-npm publish
-```
-
-Always run the build, type check, tests, and format check before publishing.
 
 ## License
 
