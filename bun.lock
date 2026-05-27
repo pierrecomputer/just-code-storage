@@ -4,8 +4,10 @@
   "workspaces": {
     "": {
       "name": "just-code-storage",
-      "devDependencies": {
+      "dependencies": {
         "@pierre/storage": "^1.9.0",
+      },
+      "devDependencies": {
         "@types/bun": "^1.3.14",
         "@types/node": "^25.0.3",
         "just-bash": "^3.0.1",
@@ -14,7 +16,6 @@
         "typescript": "^5.9.3",
       },
       "peerDependencies": {
-        "@pierre/storage": "^1.9.0",
         "just-bash": "^3.0.1",
       },
     },
