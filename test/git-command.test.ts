@@ -156,6 +156,87 @@ describe('createGitCommand phase 0', () => {
       exitCode: 1,
     });
   });
+
+  test('supplies a default commit message for merge commits', async () => {
+    let mergeOptions: Parameters<Repo['merge']>[0] | undefined;
+    const repo = {
+      ...makeRepo(new MockCommitBuilder()),
+      merge: async (options: Parameters<Repo['merge']>[0]) => {
+        mergeOptions = options;
+        return {
+          result: 'merge_commit',
+          commitSha: 'def4567890abc',
+          treeSha: 'tree',
+          source: {
+            branch: 'docs/collaboration',
+            ephemeral: false,
+            sha: 'abc1234567890',
+          },
+          target: {
+            branch: 'main',
+            ephemeral: false,
+            oldSha: 'abc1234567890',
+            newSha: 'def4567890abc',
+          },
+          promotedCommits: 1,
+        };
+      },
+    } as Repo;
+    const command = createGitCommand({
+      store: {} as never,
+      repo,
+      author: { name: 'agent', email: 'agent@example.com' },
+    });
+
+    await expect(
+      command.execute(['merge', 'docs/collaboration'], makeCtx())
+    ).resolves.toEqual({
+      stdout:
+        "Merge made by code.storage 'merge_commit' strategy.\nabc1234..def4567 main\n",
+      stderr: '',
+      exitCode: 0,
+    });
+
+    expect(mergeOptions).toMatchObject({
+      sourceBranch: 'docs/collaboration',
+      targetBranch: 'main',
+      strategy: 'merge',
+      commitMessage: "Merge branch 'docs/collaboration' into main",
+      author: { name: 'agent', email: 'agent@example.com' },
+    });
+  });
+
+  test('rejects paths outside a cloned working tree', async () => {
+    const repo = {
+      ...makeRepo(new MockCommitBuilder()),
+      listFiles: async () => ({ paths: [], ref: 'main' }),
+    } as Repo;
+    const command = createGitCommand({
+      store: {
+        findOne: async () => repo,
+      } as never,
+    });
+    const ctx = makeCtx(
+      { '/home/user/COLLABORATION.md': 'outside worktree\n' },
+      '/home/user'
+    );
+
+    await expect(
+      command.execute(['clone', 'smoke', 'reviewer-worktree'], ctx)
+    ).resolves.toEqual({
+      stdout: 'Cloned smoke into reviewer-worktree (0 files)\n',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    await expect(
+      command.execute(['add', 'COLLABORATION.md'], ctx)
+    ).resolves.toEqual({
+      stdout: '',
+      stderr: "fatal: path 'COLLABORATION.md' is outside repository\n",
+      exitCode: 128,
+    });
+  });
 });
 
 class MockCommitBuilder implements CommitBuilder {
@@ -234,11 +315,14 @@ function makeRepo(builder: CommitBuilder): Repo {
   } as unknown as Repo;
 }
 
-function makeCtx(files: Record<string, string> = {}): CommandContext {
+function makeCtx(
+  files: Record<string, string> = {},
+  cwd = '/'
+): CommandContext {
   const fs = new FakeFs(files);
   return {
     fs: fs as unknown as IFileSystem,
-    cwd: '/',
+    cwd,
     env: new Map(),
     stdin: '' as unknown as CommandContext['stdin'],
   };

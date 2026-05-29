@@ -220,10 +220,12 @@ export function pathFromArg(
   const fsPath = ctx.fs.resolvePath(ctx.cwd, arg);
   const root = workingRoot(state, ctx);
   const relative = relativePath(root, fsPath);
-  const repoPath =
-    relative && !relative.startsWith('..') && relative !== '.'
-      ? normalizeRepoPath(relative)
-      : normalizeRepoPath(arg);
+  if (relative === '..' || relative.startsWith('../')) {
+    throw new GitAbort(
+      fail(`fatal: path '${arg}' is outside repository\n`, 128)
+    );
+  }
+  const repoPath = relative === '.' ? '' : normalizeRepoPath(relative);
   return { repoPath, fsPath };
 }
 

@@ -122,6 +122,7 @@ export async function gitMerge(
     sourceBranch,
     targetBranch: state.branch,
     strategy: 'merge',
+    commitMessage: `Merge branch '${sourceBranch}' into ${state.branch}`,
     author: getAuthor(opts, ctx),
   });
   state.headSha = result.target.newSha;
