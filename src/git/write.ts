@@ -1,4 +1,4 @@
-import type { Repo } from '@pierre/storage';
+import { ApiError, type Repo } from '@pierre/storage';
 import type { CommandContext, ExecResult } from 'just-bash';
 
 import { shortSha, subject } from '../format.js';
@@ -128,12 +128,7 @@ export async function gitStatus(
   ctx: CommandContext
 ): Promise<ExecResult> {
   const repo = requireRepo(state);
-  const remote = await repo.listFilesWithMetadata({
-    ref: state.branch,
-    recursive: true,
-  } as Parameters<Repo['listFilesWithMetadata']>[0] & {
-    recursive?: boolean;
-  });
+  const remote = await listStatusRemoteFiles(repo, state);
   const remotePaths = new Set(remote.files.map((file) => file.path));
   const localPaths = new Set<string>();
   const root = fsPathForRepoPath(state, ctx, '');
@@ -176,6 +171,46 @@ export async function gitStatus(
   }
 
   return ok(lines.join('\n') + '\n');
+}
+
+async function listStatusRemoteFiles(
+  repo: Repo,
+  state: GitState
+): Promise<Awaited<ReturnType<Repo['listFilesWithMetadata']>>> {
+  try {
+    return await repo.listFilesWithMetadata({
+      ref: state.branch,
+      recursive: true,
+    } as Parameters<Repo['listFilesWithMetadata']>[0] & {
+      recursive?: boolean;
+    });
+  } catch (error) {
+    if (await is404ForUnbornBranch(repo, state, error)) {
+      return { files: [], commits: {}, ref: state.branch };
+    }
+    throw error;
+  }
+}
+
+async function is404ForUnbornBranch(
+  repo: Repo,
+  state: GitState,
+  error: unknown
+): Promise<boolean> {
+  if (!isStatus(error, 404)) {
+    return false;
+  }
+
+  try {
+    const result = await repo.listBranches();
+    if (result.branches.length === 0) {
+      return true;
+    }
+    const branch = result.branches.find((entry) => entry.name === state.branch);
+    return Boolean(branch && isZeroSha(branch.headSha));
+  } catch {
+    return false;
+  }
 }
 
 export async function stageAll(
@@ -242,4 +277,14 @@ function throwUsage(message: string): never {
 
 function isZeroSha(sha: string): boolean {
   return /^0+$/.test(sha);
+}
+
+function isStatus(error: unknown, status: number): boolean {
+  if (error instanceof ApiError) {
+    return error.status === status;
+  }
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  return (error as Record<string, unknown>).status === status;
 }

@@ -1,4 +1,5 @@
 import {
+  ApiError,
   RefUpdateError,
   type CommitBuilder,
   type CommitFileSource,
@@ -139,6 +140,114 @@ describe('createGitCommand phase 0', () => {
         `git: '${args[0]}' is not a git command. See 'git --help'.\n`
       );
     }
+  });
+
+  test('status reads metadata from the current branch ref', async () => {
+    let metadataOptions:
+      | (Parameters<Repo['listFilesWithMetadata']>[0] & {
+          recursive?: boolean;
+        })
+      | undefined;
+    const repo = {
+      ...makeRepo(new MockCommitBuilder()),
+      listFilesWithMetadata: async (
+        options: Parameters<Repo['listFilesWithMetadata']>[0] & {
+          recursive?: boolean;
+        }
+      ) => {
+        metadataOptions = options;
+        return { files: [], commits: {}, ref: 'feature/foo' };
+      },
+    } as Repo;
+    const command = createGitCommand({
+      store: {} as never,
+      repo,
+      branch: 'feature/foo',
+    });
+
+    await expect(command.execute(['status'], makeCtx())).resolves.toEqual({
+      stdout: 'On branch feature/foo\nnothing to commit, working tree clean\n',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    expect(metadataOptions).toMatchObject({
+      ref: 'feature/foo',
+      recursive: true,
+    });
+  });
+
+  test('status treats an unborn branch metadata 404 as an empty baseline', async () => {
+    const repo = {
+      ...makeRepo(new MockCommitBuilder()),
+      listFilesWithMetadata: async () => {
+        throw notFoundError(
+          'https://code.storage/api/v1/repos/files/metadata?ref=main'
+        );
+      },
+      listBranches: async () => ({ branches: [], hasMore: false }),
+    } as Repo;
+    const command = createGitCommand({
+      store: {} as never,
+      repo,
+    });
+
+    await expect(
+      command.execute(['status'], makeCtx({ '/README.md': '# Hello\n' }))
+    ).resolves.toEqual({
+      stdout:
+        'On branch main\n\nChanges not staged for commit:\n  added: README.md\n',
+      stderr: '',
+      exitCode: 0,
+    });
+  });
+
+  test('status does not treat a missing checked-out branch as unborn', async () => {
+    let metadataOptions:
+      | (Parameters<Repo['listFilesWithMetadata']>[0] & {
+          recursive?: boolean;
+        })
+      | undefined;
+    const repo = {
+      ...makeRepo(new MockCommitBuilder()),
+      listFilesWithMetadata: async (
+        options: Parameters<Repo['listFilesWithMetadata']>[0] & {
+          recursive?: boolean;
+        }
+      ) => {
+        metadataOptions = options;
+        throw notFoundError(
+          'https://code.storage/api/v1/repos/files/metadata?ref=feature/foo'
+        );
+      },
+      listBranches: async () => ({
+        branches: [
+          {
+            cursor: 'main',
+            name: 'main',
+            headSha: 'abc1234567890',
+            createdAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+        hasMore: false,
+      }),
+    } as Repo;
+    const command = createGitCommand({
+      store: {} as never,
+      repo,
+      branch: 'feature/foo',
+    });
+
+    await expect(command.execute(['status'], makeCtx())).resolves.toEqual({
+      stdout: '',
+      stderr: 'fatal: code.storage object was not found\n',
+      exitCode: 128,
+    });
+
+    expect(metadataOptions).toMatchObject({
+      ref: 'feature/foo',
+      recursive: true,
+    });
   });
 
   test('requires commit messages', async () => {
@@ -378,6 +487,16 @@ function makeRepo(builder: CommitBuilder): Repo {
       hasMore: false,
     }),
   } as unknown as Repo;
+}
+
+function notFoundError(url: string): ApiError {
+  return new ApiError({
+    message: 'not found',
+    status: 404,
+    statusText: 'Not Found',
+    method: 'GET',
+    url,
+  });
 }
 
 function makeCtx(
