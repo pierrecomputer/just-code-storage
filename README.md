@@ -131,24 +131,32 @@ bun run format:check
 
 ## Examples
 
-The live demo is in `examples/demo.ts`. It is gated on `PIERRE_PRIVATE_KEY` so
-it can be run safely without credentials:
+The live examples are gated on `PIERRE_PRIVATE_KEY` so they can be run safely
+without credentials:
 
 ```bash
 bun examples/demo.ts
+bun examples/git-operations.ts
 ```
 
-To run it against code.storage:
+To run them against code.storage:
 
 ```bash
 PIERRE_PRIVATE_KEY="$(cat key.pem)" ORG_NAME=my-org bun examples/demo.ts
+PIERRE_PRIVATE_KEY="$(cat key.pem)" ORG_NAME=my-org bun examples/git-operations.ts
 ```
 
-The demo creates a temporary repository, then simulates three independent
-`just-bash` sessions. Alice seeds a nested project tree, Bob clones it and
-commits a feature branch with docs, source, and test files, Carol clones it and
-commits a release hardening branch with a deletion and new subtrees, and Alice
-fetches, merges, tags, pulls, searches, and reads files from the merged tree.
+`examples/demo.ts` creates a temporary repository, then simulates three
+independent `just-bash` sessions. Alice seeds a nested project tree, Bob clones
+it and commits a feature branch with docs, source, and test files, Carol clones
+it and commits a release hardening branch with a deletion and new subtrees, and
+Alice fetches, merges, tags, pulls, searches, and reads files from the merged
+tree.
+
+`examples/git-operations.ts` focuses on operation coverage. It creates a
+temporary repository and touches every supported `git` command listed above,
+including setup, staging, history, file reads, refs, diff, merge, sync, and help
+commands.
 
 Optional environment variables:
 
