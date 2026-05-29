@@ -70,6 +70,13 @@ Create one `git` command per session and reuse it with the same `Bash` instance.
 The command keeps the selected repo, current branch, staged paths, and cloned
 working directory in memory between `bash.exec()` calls.
 
+`just-bash` resets shell-local state such as `cwd` between separate
+`bash.exec()` calls, while keeping the VFS shared. If a workflow changes
+directories across multiple calls, pass the current `cwd` in `exec()` options or
+run the workflow as one script. After `git clone <repo> <dir>`, pathspecs
+outside the selected worktree are rejected instead of being committed as
+repository paths.
+
 Once registered, the command works like any other `just-bash` command:
 
 ```bash
@@ -88,7 +95,7 @@ git push
 | ----------- | -------------------------------- | -------------------------------------------------------------------------- |
 | `init`      | `git init my-repo`               | Create a code.storage repository and select it for the session.            |
 | `clone`     | `git clone my-repo worktree`     | Select an existing repository and materialize its files into the VFS.      |
-| `add`       | `git add README.md`              | Stage files or directories from the VFS for commit.                        |
+| `add`       | `git add README.md`              | Stage files or directories from the selected worktree for commit.          |
 | `rm`        | `git rm old.txt`                 | Remove paths from the VFS and stage deletions.                             |
 | `commit`    | `git commit -m "initial"`        | Send staged changes through the SDK commit builder.                        |
 | `status`    | `git status`                     | Show staged and unstaged VFS changes against the selected branch.          |
@@ -103,9 +110,9 @@ git push
 | `diff`      | `git diff main..feature`         | Show branch or commit diffs.                                               |
 | `branch`    | `git branch release`             | List, create, or delete branches.                                          |
 | `tag`       | `git tag v1 HEAD`                | List, create, or delete tags.                                              |
-| `checkout`  | `git checkout main`              | Switch branches, or create one with `-b`.                                  |
-| `switch`    | `git switch -c feature`          | Switch branches with the modern Git spelling.                              |
-| `merge`     | `git merge feature`              | Merge a source branch into the current branch.                             |
+| `checkout`  | `git checkout main`              | Select a branch, or create one with `-b`.                                  |
+| `switch`    | `git switch -c feature`          | Select branches with the modern Git spelling.                              |
+| `merge`     | `git merge feature`              | Merge a source branch into the current branch with a default message.      |
 | `fetch`     | `git fetch`                      | List remote branch heads from code.storage.                                |
 | `pull`      | `git pull`                       | Refresh the VFS working tree from the current branch.                      |
 | `push`      | `git push`                       | Commit staged changes, or stage the current VFS tree if nothing is staged. |
@@ -144,9 +151,15 @@ To run it against code.storage:
 PIERRE_PRIVATE_KEY="$(cat key.pem)" ORG_NAME=my-org bun examples/demo.ts
 ```
 
+The demo creates a temporary repository, then simulates two independent
+`just-bash` sessions: Alice seeds a nested project tree, Bob clones it and
+commits a feature branch with docs, source, and test files, and Alice fetches,
+merges, pulls, lists files, and reads files from the merged subtrees.
+
 Optional environment variables:
 
-- `CODE_STORAGE_REPO`: browse an existing repository after the smoke demo.
+- `CODE_STORAGE_REPO`: browse an existing repository after the collaboration
+  demo.
 - `CODE_STORAGE_API_BASE_URL`: override the code.storage API endpoint.
 - `CODE_STORAGE_STORAGE_BASE_URL`: override the storage endpoint.
 - `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`: set the commit author used by the
