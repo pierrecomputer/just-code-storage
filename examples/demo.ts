@@ -29,11 +29,6 @@ const author = {
   email: process.env.GIT_AUTHOR_EMAIL ?? 'agent@example.com',
 };
 
-interface DemoSession {
-  bash: Bash;
-  cwd: string;
-}
-
 async function main(): Promise<void> {
   await runCollaborativeDemo();
 
@@ -46,9 +41,12 @@ async function runCollaborativeDemo(): Promise<void> {
   const repoId = `code-storage-git-collab-${Date.now()}`;
   const alice = createShell(`${author.name}-alice`);
   const bob = createShell(`${author.name}-bob`);
+  const carol = createShell(`${author.name}-carol`);
 
-  console.log('=== Collaborative: owner + reviewer on one repo ===\n');
-  await runSession('alice', alice, [
+  console.log(
+    '=== Distributed collaboration: three independent sessions ===\n'
+  );
+  await runScript('alice', alice, [
     `git init ${repoId}`,
     'echo "# Shared code.storage project" > README.md',
     'echo "" >> README.md',
@@ -74,7 +72,7 @@ async function runCollaborativeDemo(): Promise<void> {
     'git log --oneline',
   ]);
 
-  await runSession('bob', bob, [
+  await runScript('bob', bob, [
     `git clone ${repoId} reviewer-worktree`,
     'cd reviewer-worktree',
     'git switch -c docs/collaboration',
@@ -98,15 +96,40 @@ async function runCollaborativeDemo(): Promise<void> {
     'git log --oneline -n 2',
   ]);
 
-  await runSession('alice', alice, [
+  await runScript('carol', carol, [
+    `git clone ${repoId} release-worktree`,
+    'cd release-worktree',
+    'git switch -c release/hardening',
+    'mkdir -p docs/runbooks src/storage/policies test/release',
+    'echo "# Release runbook" > docs/runbooks/release.md',
+    'echo "" >> docs/runbooks/release.md',
+    'echo "1. Fetch remote refs." >> docs/runbooks/release.md',
+    'echo "2. Merge reviewed feature branches." >> docs/runbooks/release.md',
+    'echo "3. Pull the merged tree before verification." >> docs/runbooks/release.md',
+    'echo "export const protectedBranches = [\\"main\\", \\"release\\"];" > src/storage/policies/refs.ts',
+    'echo "release/hardening" > test/release/branch.txt',
+    'git rm scripts/check.sh',
+    'git add docs src test',
+    'git status',
+    'git commit -m "Add release hardening tree"',
+    'git log --oneline -n 2',
+  ]);
+
+  await runScript('alice', alice, [
     'git fetch',
     'git merge docs/collaboration',
+    'git merge release/hardening',
+    'git tag v0-collab HEAD',
     'git pull',
     'git ls-files',
     'cat README.md',
     'cat docs/collaboration/review.md',
     'cat src/git/commands/merge.ts',
-    'git log --oneline -n 3',
+    'cat docs/runbooks/release.md',
+    'cat src/storage/policies/refs.ts',
+    'git grep -n code.storage -- README.md docs src',
+    'git tag',
+    'git log --oneline -n 5',
   ]);
 }
 
@@ -120,7 +143,7 @@ async function runBrowseDemo(repoId: string): Promise<void> {
   const bash = createShell(author.name, repo);
 
   console.log(`\n=== Browse: ${repoId} ===\n`);
-  await runSession('browse', bash, [
+  await runScript('browse', bash, [
     'git log --oneline -n 5',
     'git ls-files',
     'git branch',
@@ -130,8 +153,8 @@ async function runBrowseDemo(repoId: string): Promise<void> {
 function createShell(
   name: string,
   repo?: Awaited<ReturnType<typeof store.findOne>>
-): DemoSession {
-  const bash = new Bash({
+): Bash {
+  return new Bash({
     customCommands: [
       createGitCommand({
         store,
@@ -143,36 +166,26 @@ function createShell(
       }),
     ],
   });
-  return { bash, cwd: bash.getCwd() };
 }
 
-async function runSession(
+async function runScript(
   label: string,
-  session: DemoSession,
+  bash: Bash,
   commands: string[]
 ): Promise<void> {
   for (const command of commands) {
     console.log(`${label}$ ${command}`);
-    const result = await session.bash.exec(command, { cwd: session.cwd });
-    if (result.stdout) {
-      process.stdout.write(result.stdout);
-    }
-    if (result.stderr) {
-      process.stderr.write(result.stderr);
-    }
-    if (result.exitCode !== 0) {
-      throw new Error(`${command} exited with ${result.exitCode}`);
-    }
-    const cdTarget = parseCdTarget(command);
-    if (cdTarget) {
-      session.cwd = session.bash.fs.resolvePath(session.cwd, cdTarget);
-    }
   }
-}
-
-function parseCdTarget(command: string): string | null {
-  const match = /^cd(?:\s+(.+))?$/.exec(command.trim());
-  return match ? (match[1] ?? '/') : null;
+  const result = await bash.exec(['set -e', ...commands].join('\n'));
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  if (result.exitCode !== 0) {
+    throw new Error(`${label} script exited with ${result.exitCode}`);
+  }
 }
 
 main().catch((error: unknown) => {

@@ -70,13 +70,6 @@ Create one `git` command per session and reuse it with the same `Bash` instance.
 The command keeps the selected repo, current branch, staged paths, and cloned
 working directory in memory between `bash.exec()` calls.
 
-`just-bash` resets shell-local state such as `cwd` between separate
-`bash.exec()` calls, while keeping the VFS shared. If a workflow changes
-directories across multiple calls, pass the current `cwd` in `exec()` options or
-run the workflow as one script. After `git clone <repo> <dir>`, pathspecs
-outside the selected worktree are rejected instead of being committed as
-repository paths.
-
 Once registered, the command works like any other `just-bash` command:
 
 ```bash
@@ -151,10 +144,11 @@ To run it against code.storage:
 PIERRE_PRIVATE_KEY="$(cat key.pem)" ORG_NAME=my-org bun examples/demo.ts
 ```
 
-The demo creates a temporary repository, then simulates two independent
-`just-bash` sessions: Alice seeds a nested project tree, Bob clones it and
-commits a feature branch with docs, source, and test files, and Alice fetches,
-merges, pulls, lists files, and reads files from the merged subtrees.
+The demo creates a temporary repository, then simulates three independent
+`just-bash` sessions. Alice seeds a nested project tree, Bob clones it and
+commits a feature branch with docs, source, and test files, Carol clones it and
+commits a release hardening branch with a deletion and new subtrees, and Alice
+fetches, merges, tags, pulls, searches, and reads files from the merged tree.
 
 Optional environment variables:
 
