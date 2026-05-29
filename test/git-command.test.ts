@@ -206,6 +206,50 @@ describe('createGitCommand phase 0', () => {
     });
   });
 
+  test('resolves HEAD before creating a tag', async () => {
+    let tagOptions: Parameters<Repo['createTag']>[0] | undefined;
+    const repo = {
+      ...makeRepo(new MockCommitBuilder()),
+      getCommit: async () => ({
+        commit: {
+          sha: 'abc1234567890abc1234567890abc1234567890ab',
+          message: 'Initial commit',
+          authorName: 'agent',
+          authorEmail: 'agent@example.com',
+          committerName: 'agent',
+          committerEmail: 'agent@example.com',
+          date: new Date('2026-01-01T00:00:00.000Z'),
+          rawDate: '2026-01-01T00:00:00.000Z',
+        },
+      }),
+      createTag: async (options: Parameters<Repo['createTag']>[0]) => {
+        tagOptions = options;
+        return {
+          name: options.name,
+          sha: options.target,
+          message: 'created',
+        };
+      },
+    } as Repo;
+    const command = createGitCommand({
+      store: {} as never,
+      repo,
+    });
+
+    await expect(command.execute(['tag', 'v0', 'HEAD'], makeCtx())).resolves.toEqual(
+      {
+        stdout: 'v0 abc1234\n',
+        stderr: '',
+        exitCode: 0,
+      }
+    );
+
+    expect(tagOptions).toEqual({
+      name: 'v0',
+      target: 'abc1234567890abc1234567890abc1234567890ab',
+    });
+  });
+
   test('rejects paths outside a cloned working tree', async () => {
     const repo = {
       ...makeRepo(new MockCommitBuilder()),
