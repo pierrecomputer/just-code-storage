@@ -76,6 +76,27 @@ describe('createGitCommand phase 0', () => {
     });
   });
 
+  test('prints explicit help successfully', async () => {
+    const command = createGitCommand({ store: {} as never });
+
+    await expect(command.execute(['help'], makeCtx())).resolves.toEqual({
+      stdout:
+        'usage: git <command> [<args>]\n\ncommands: init, add, commit, log, show, cat-file, ls-files, ls-tree,\n          blame, grep, branch, tag, diff, rev-parse, checkout, switch,\n          merge, status, rm, clone, pull, push, fetch\n',
+      stderr: '',
+      exitCode: 0,
+    });
+    await expect(command.execute(['--help'], makeCtx())).resolves.toMatchObject(
+      {
+        stderr: '',
+        exitCode: 0,
+      }
+    );
+    await expect(command.execute([], makeCtx())).resolves.toMatchObject({
+      stdout: '',
+      exitCode: 129,
+    });
+  });
+
   test('routes every supported operational subcommand', async () => {
     const command = createGitCommand({
       store: {
@@ -236,13 +257,13 @@ describe('createGitCommand phase 0', () => {
       repo,
     });
 
-    await expect(command.execute(['tag', 'v0', 'HEAD'], makeCtx())).resolves.toEqual(
-      {
-        stdout: 'v0 abc1234\n',
-        stderr: '',
-        exitCode: 0,
-      }
-    );
+    await expect(
+      command.execute(['tag', 'v0', 'HEAD'], makeCtx())
+    ).resolves.toEqual({
+      stdout: 'v0 abc1234\n',
+      stderr: '',
+      exitCode: 0,
+    });
 
     expect(tagOptions).toEqual({
       name: 'v0',

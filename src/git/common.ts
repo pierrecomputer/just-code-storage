@@ -23,17 +23,16 @@ export function fail(stderr: string, exitCode = 1): ExecResult {
   return { stdout: '', stderr, exitCode };
 }
 
-export function usage(): ExecResult {
-  return fail(
+export function usage(exitCode = 129): ExecResult {
+  const stdout =
     [
       'usage: git <command> [<args>]',
       '',
       'commands: init, add, commit, log, show, cat-file, ls-files, ls-tree,',
       '          blame, grep, branch, tag, diff, rev-parse, checkout, switch,',
       '          merge, status, rm, clone, pull, push, fetch',
-    ].join('\n') + '\n',
-    129
-  );
+    ].join('\n') + '\n';
+  return exitCode === 0 ? ok(stdout) : fail(stdout, exitCode);
 }
 
 export function requireRepo(state: GitState): Repo {

@@ -43,9 +43,10 @@ export function createGitCommand(opts: GitCommandOptions): Command {
       const [subcommand, ...rest] = args;
       switch (subcommand) {
         case undefined:
+          return usage();
         case '--help':
         case 'help':
-          return usage();
+          return usage(0);
         case 'init':
           return gitInit(opts, state, rest);
         case 'add':
