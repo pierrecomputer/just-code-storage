@@ -39,6 +39,7 @@ async function main(): Promise<void> {
     'git help',
     'git --help',
     `git init ${repoId}`,
+    'git status',
     'mkdir -p src docs scripts test',
     'echo "# Git operation coverage" > README.md',
     'echo "" >> README.md',
