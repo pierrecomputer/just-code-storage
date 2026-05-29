@@ -30,26 +30,44 @@ const author = {
 };
 
 async function main(): Promise<void> {
-  await runSmokeDemo();
+  await runCollaborativeDemo();
 
   if (process.env.CODE_STORAGE_REPO) {
     await runBrowseDemo(process.env.CODE_STORAGE_REPO);
   }
 }
 
-async function runSmokeDemo(): Promise<void> {
-  const repoId = `code-storage-git-smoke-${Date.now()}`;
-  const bash = new Bash({
-    customCommands: [createGitCommand({ store, author })],
-  });
+async function runCollaborativeDemo(): Promise<void> {
+  const repoId = `code-storage-git-collab-${Date.now()}`;
+  const alice = createShell(`${author.name}-alice`);
+  const bob = createShell(`${author.name}-bob`);
 
-  console.log('=== Smoke: create -> add -> commit -> log ===\n');
-  await runSession(bash, [
+  console.log('=== Collaborative: owner + reviewer on one repo ===\n');
+  await runSession('alice', alice, [
     `git init ${repoId}`,
-    'echo "# Hello code.storage" > README.md',
+    'echo "# Shared code.storage project" > README.md',
     'git add README.md',
-    'git commit -m "Initial commit"',
+    'git commit -m "Initial shared project"',
     'git log --oneline',
+  ]);
+
+  await runSession('bob', bob, [
+    `git clone ${repoId} reviewer-worktree`,
+    'cd reviewer-worktree',
+    'git switch -c docs/collaboration',
+    'echo "Reviewed from a separate just-bash session." > COLLABORATION.md',
+    'git add COLLABORATION.md',
+    'git commit -m "Add collaboration notes"',
+    'git log --oneline -n 2',
+  ]);
+
+  await runSession('alice', alice, [
+    'git fetch',
+    'git merge docs/collaboration',
+    'git pull',
+    'git ls-files',
+    'cat COLLABORATION.md',
+    'git log --oneline -n 3',
   ]);
 }
 
@@ -60,21 +78,41 @@ async function runBrowseDemo(repoId: string): Promise<void> {
     return;
   }
 
-  const bash = new Bash({
-    customCommands: [createGitCommand({ store, repo, author })],
-  });
+  const bash = createShell(author.name, repo);
 
   console.log(`\n=== Browse: ${repoId} ===\n`);
-  await runSession(bash, [
+  await runSession('browse', bash, [
     'git log --oneline -n 5',
     'git ls-files',
     'git branch',
   ]);
 }
 
-async function runSession(bash: Bash, commands: string[]): Promise<void> {
+function createShell(
+  name: string,
+  repo?: Awaited<ReturnType<typeof store.findOne>>
+): Bash {
+  return new Bash({
+    customCommands: [
+      createGitCommand({
+        store,
+        repo: repo ?? undefined,
+        author: {
+          ...author,
+          name,
+        },
+      }),
+    ],
+  });
+}
+
+async function runSession(
+  label: string,
+  bash: Bash,
+  commands: string[]
+): Promise<void> {
   for (const command of commands) {
-    console.log(`$ ${command}`);
+    console.log(`${label}$ ${command}`);
     const result = await bash.exec(command);
     if (result.stdout) {
       process.stdout.write(result.stdout);
