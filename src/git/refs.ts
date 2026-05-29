@@ -63,9 +63,10 @@ export async function gitTag(
   if (!name || name.startsWith('-')) {
     return fail('usage: git tag [<name> <sha>] | git tag -d <name>\n', 129);
   }
+  const commitSha = await resolveCommitSha(repo, state, target);
   const result = await repo.createTag({
     name,
-    target: resolveRef(state, target),
+    target: commitSha,
   });
   return ok(`${result.name} ${shortSha(result.sha)}\n`);
 }
@@ -140,4 +141,16 @@ async function verifyBranch(repo: Repo, name: string) {
       fail(`error: pathspec '${name}' did not match any branch\n`, 1)
     );
   }
+}
+
+async function resolveCommitSha(
+  repo: Repo,
+  state: GitState,
+  target: string
+): Promise<string> {
+  if (target === 'HEAD' && state.headSha) {
+    return state.headSha;
+  }
+  const { commit } = await repo.getCommit({ sha: resolveRef(state, target) });
+  return commit.sha;
 }
