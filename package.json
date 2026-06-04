@@ -1,5 +1,5 @@
 {
-  "name": "just-code-storage",
+  "name": "@pierre/just-code-storage",
   "version": "0.1.0",
   "description": "A git-flavored just-bash command backed by the code.storage SDK.",
   "license": "Apache-2.0",

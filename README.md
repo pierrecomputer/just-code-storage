@@ -1,6 +1,6 @@
-# just-code-storage
+# @piere/just-code-storage
 
-`just-code-storage` is a git-flavored command for
+`@pierre/just-code-storage` is a git-flavored command for
 [`just-bash`](https://www.npmjs.com/package/just-bash), backed by
 [code.storage](https://code.storage). Made with love by
 [The Pierre Computer Company](https://pierre.computer).
@@ -27,7 +27,7 @@ tree without shelling out to system Git.
 ## Install
 
 ```bash
-bun i just-code-storage just-bash
+bun i @pierre/just-code-storage just-bash
 ```
 
 `just-bash` is a peer dependency because your app owns the shell instance that
@@ -40,7 +40,7 @@ You need a Pierre org name and private key to create the SDK client.
 
 ```ts
 import { Bash } from 'just-bash';
-import { GitStorage, createGitCommand } from 'just-code-storage';
+import { GitStorage, createGitCommand } from '@pierre/just-code-storage';
 
 const store = new GitStorage({
   name: process.env.ORG_NAME ?? 'pierre',

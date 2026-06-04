@@ -43,7 +43,7 @@ async function main(): Promise<void> {
     'mkdir -p src docs scripts test',
     'echo "# Git operation coverage" > README.md',
     'echo "" >> README.md',
-    'echo "This repository exercises each just-code-storage git command." >> README.md',
+    'echo "This repository exercises each @pierre/just-code-storage git command." >> README.md',
     'echo "export const command = \\"git\\";" > src/index.ts',
     'echo "# Operations guide" > docs/guide.md',
     'echo "temporary script" > scripts/remove-me.sh',
