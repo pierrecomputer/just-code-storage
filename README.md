@@ -1,4 +1,4 @@
-# @piere/just-code-storage
+# @pierre/just-code-storage
 
 `@pierre/just-code-storage` is a git-flavored command for
 [`just-bash`](https://www.npmjs.com/package/just-bash), backed by
