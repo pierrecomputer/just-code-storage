@@ -26,6 +26,9 @@
     "tsc": "tsc --noEmit --pretty",
     "prepublishOnly": "bun run build"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@pierre/storage": "^1.9.0"
   },
