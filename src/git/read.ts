@@ -1,4 +1,3 @@
-import type { ListFilesResult, Repo } from '@pierre/storage';
 import type { ExecResult } from 'just-bash';
 
 import {
@@ -46,13 +45,14 @@ export async function gitLog(
     }
   }
 
-  const result = await repo.listCommits({
-    branch: state.branch,
+  const result = await repo.pierre.repos.commits.list({
+    repo_name: repo.id,
+    ref: state.branch,
     limit,
     path,
-  } as Parameters<Repo['listCommits']>[0] & { path?: string });
-  state.headSha = result.commits[0]?.sha ?? state.headSha;
-  return ok(formatLog(result.commits, oneline));
+  });
+  state.headSha = result.data[0]?.sha ?? state.headSha;
+  return ok(formatLog(result.data, oneline));
 }
 
 export async function gitShow(
@@ -64,7 +64,8 @@ export async function gitShow(
   const fileTarget = splitFileTarget(target);
 
   if (fileTarget) {
-    const response = await repo.getFileStream({
+    const response = await repo.pierre.repos.files.get({
+      repo_name: repo.id,
       ref: resolveRef(state, fileTarget.ref),
       path: fileTarget.path,
     });
@@ -73,8 +74,8 @@ export async function gitShow(
 
   const ref = resolveRef(state, target);
   const [{ commit }, diff] = await Promise.all([
-    repo.getCommit({ sha: ref }),
-    repo.getCommitDiff({ sha: ref }),
+    repo.pierre.repos.commits.get({ repo_name: repo.id, ref }),
+    repo.pierre.repos.diff.get({ repo_name: repo.id, ref }),
   ]);
   state.headSha = commit.sha;
   return ok(formatCommitHeader(commit) + formatDiff(diff.files));
@@ -95,7 +96,8 @@ export async function gitCatFile(
       128
     );
   }
-  const response = await repo.getFileStream({
+  const response = await repo.pierre.repos.files.get({
+    repo_name: repo.id,
     ref: resolveRef(state, target.ref),
     path: target.path,
   });
@@ -108,12 +110,14 @@ export async function gitLsFiles(
 ): Promise<ExecResult> {
   const repo = requireRepo(state);
   const path = args[0];
-  const result = await repo.listFiles({
+  const result = await repo.pierre.repos.files.list({
+    repo_name: repo.id,
     ref: state.branch,
     path,
     recursive: true,
-  } as ListFilesOptionsWithPath);
-  return ok(result.paths.join('\n') + (result.paths.length > 0 ? '\n' : ''));
+  });
+  const paths = result.body.paths;
+  return ok(paths.join('\n') + (paths.length > 0 ? '\n' : ''));
 }
 
 export async function gitLsTree(
@@ -139,24 +143,16 @@ export async function gitLsTree(
     }
   }
 
-  const result = await repo.listFiles({
+  const result = await repo.pierre.repos.files.list({
+    repo_name: repo.id,
     ref: resolveRef(state, ref),
     path,
     recursive,
-  } as ListFilesOptionsWithPath);
-  const entries = getTreeEntries(result);
-  const displayEntries =
-    entries.length > 0
-      ? entries
-      : result.paths.map((entryPath) => ({
-          mode: '100644',
-          type: 'blob' as const,
-          path: entryPath,
-        }));
+  });
   return ok(
-    displayEntries
+    result.data
       .map((entry) => `${entry.mode} ${entry.type}\t${entry.path}`)
-      .join('\n') + (displayEntries.length > 0 ? '\n' : '')
+      .join('\n') + (result.data.length > 0 ? '\n' : '')
   );
 }
 
@@ -170,8 +166,16 @@ export async function gitBlame(
     return fail('usage: git blame <path>\n', 129);
   }
   const [blame, fileResponse] = await Promise.all([
-    repo.getBlame({ path: filePath, ref: state.branch }),
-    repo.getFileStream({ path: filePath, ref: state.branch }),
+    repo.pierre.repos.blame.get({
+      repo_name: repo.id,
+      path: filePath,
+      ref: state.branch,
+    }),
+    repo.pierre.repos.files.get({
+      repo_name: repo.id,
+      path: filePath,
+      ref: state.branch,
+    }),
   ]);
   const text = new TextDecoder().decode(await responseBytes(fileResponse));
   return ok(formatBlame(blame.lines, text.split(/\r?\n/)));
@@ -186,7 +190,10 @@ export async function gitRevParse(
     return ok(`${state.branch}\n`);
   }
   const ref = resolveRef(state, args[0]);
-  const { commit } = await repo.getCommit({ sha: ref });
+  const { commit } = await repo.pierre.repos.commits.get({
+    repo_name: repo.id,
+    ref,
+  });
   state.headSha = commit.sha;
   return ok(`${commit.sha}\n`);
 }
@@ -207,22 +214,4 @@ function bytesResult(bytes: Uint8Array): ExecResult {
     stdoutKind: 'bytes',
     stdoutEncoding: 'binary',
   };
-}
-
-type ListFilesOptionsWithPath = Parameters<Repo['listFiles']>[0] & {
-  path?: string;
-  recursive?: boolean;
-};
-
-interface TreeEntry {
-  path: string;
-  type: string;
-  mode: string;
-}
-
-function getTreeEntries(result: ListFilesResult): TreeEntry[] {
-  if ('entries' in result && Array.isArray(result.entries)) {
-    return result.entries;
-  }
-  return [];
 }

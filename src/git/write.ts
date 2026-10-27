@@ -1,8 +1,8 @@
-import { ApiError, type Repo } from '@pierre/storage';
+import { APIError, type CommitFile, type FileWithMetadata } from '@pierre/sdk';
 import type { CommandContext, ExecResult } from 'just-bash';
 
 import { shortSha, subject } from '../format.js';
-import type { GitCommandOptions, GitState } from '../types.js';
+import type { GitCommandOptions, GitState, Repo } from '../types.js';
 import {
   collectFiles,
   fail,
@@ -71,32 +71,36 @@ export async function gitCommit(
     return ok('nothing to commit, working tree clean\n');
   }
 
-  const builder = repo.createCommit({
-    targetBranch: state.branch,
-    commitMessage: parsed.message,
-    expectedHeadSha: state.headSha,
-    author: getAuthor(opts, ctx),
-  });
-
+  const files: CommitFile[] = [];
   for (const entry of entries) {
     if (entry.operation === 'delete') {
-      builder.deletePath(entry.repoPath);
+      files.push({ path: entry.repoPath, operation: 'delete' });
       continue;
     }
     const fsPath =
       entry.fsPath ?? fsPathForRepoPath(state, ctx, entry.repoPath);
-    builder.addFile(entry.repoPath, await ctx.fs.readFileBuffer(fsPath));
+    files.push({
+      path: entry.repoPath,
+      content: await ctx.fs.readFileBuffer(fsPath),
+    });
   }
 
-  const result = await builder.send();
-  state.headSha = result.refUpdate.newSha || result.commitSha;
+  const result = await repo.pierre.repos.commits.create({
+    repo_name: repo.id,
+    target_branch: state.branch,
+    commit_message: parsed.message,
+    expected_target_sha: state.headSha,
+    author: getAuthor(opts, ctx),
+    files,
+  });
+  state.headSha = result.result.new_sha || result.commit.commit_sha;
   for (const entry of entries) {
     state.stage.delete(entry.repoPath);
   }
 
-  const rootLabel = isZeroSha(result.refUpdate.oldSha) ? ' (root-commit)' : '';
+  const rootLabel = isZeroSha(result.result.old_sha) ? ' (root-commit)' : '';
   return ok(
-    `[${state.branch}${rootLabel} ${shortSha(result.commitSha)}] ${subject(parsed.message)}\n`
+    `[${state.branch}${rootLabel} ${shortSha(result.commit.commit_sha)}] ${subject(parsed.message)}\n`
   );
 }
 
@@ -129,7 +133,7 @@ export async function gitStatus(
 ): Promise<ExecResult> {
   const repo = requireRepo(state);
   const remote = await listStatusRemoteFiles(repo, state);
-  const remotePaths = new Set(remote.files.map((file) => file.path));
+  const remotePaths = new Set(remote.map((file) => file.path));
   const localPaths = new Set<string>();
   const root = fsPathForRepoPath(state, ctx, '');
 
@@ -176,17 +180,17 @@ export async function gitStatus(
 async function listStatusRemoteFiles(
   repo: Repo,
   state: GitState
-): Promise<Awaited<ReturnType<Repo['listFilesWithMetadata']>>> {
+): Promise<FileWithMetadata[]> {
   try {
-    return await repo.listFilesWithMetadata({
+    const result = await repo.pierre.repos.files.metadata.list({
+      repo_name: repo.id,
       ref: state.branch,
       recursive: true,
-    } as Parameters<Repo['listFilesWithMetadata']>[0] & {
-      recursive?: boolean;
     });
+    return result.data;
   } catch (error) {
     if (await is404ForUnbornBranch(repo, state, error)) {
-      return { files: [], commits: {}, ref: state.branch };
+      return [];
     }
     throw error;
   }
@@ -202,12 +206,14 @@ async function is404ForUnbornBranch(
   }
 
   try {
-    const result = await repo.listBranches();
-    if (result.branches.length === 0) {
+    const result = await repo.pierre.repos.branches.list({
+      repo_name: repo.id,
+    });
+    if (result.data.length === 0) {
       return true;
     }
-    const branch = result.branches.find((entry) => entry.name === state.branch);
-    return Boolean(branch && isZeroSha(branch.headSha));
+    const branch = result.data.find((entry) => entry.name === state.branch);
+    return Boolean(branch && isZeroSha(branch.head_sha));
   } catch {
     return false;
   }
@@ -280,7 +286,7 @@ function isZeroSha(sha: string): boolean {
 }
 
 function isStatus(error: unknown, status: number): boolean {
-  if (error instanceof ApiError) {
+  if (error instanceof APIError) {
     return error.status === status;
   }
   if (!error || typeof error !== 'object') {

@@ -6,7 +6,7 @@
 [The Pierre Computer Company](https://pierre.computer).
 
 It gives a `just-bash` shell a custom `git` command that talks to the
-`@pierre/storage` SDK, so scripts can create repositories, stage files, commit
+`@pierre/sdk` SDK, so scripts can create repositories, stage files, commit
 changes, inspect history, manage refs, search code, and sync a virtual working
 tree without shelling out to system Git.
 
@@ -20,7 +20,7 @@ tree without shelling out to system Git.
   `ls-tree`, `blame`, and `rev-parse`.
 - Search, diff, and ref workflows with `grep`, `diff`, `branch`, `tag`,
   `checkout`, `switch`, and `merge`.
-- Binary-safe commits via the SDK commit builder.
+- Binary-safe commits via the SDK commit API.
 - Optimistic ref updates with git-style conflict messages when the remote has
   moved.
 
@@ -32,7 +32,7 @@ bun i @pierre/just-code-storage just-bash
 
 `just-bash` is a peer dependency because your app owns the shell instance that
 receives the custom command. The code.storage SDK is a regular dependency of
-this package, and `GitStorage` is re-exported for convenience.
+this package, and `Pierre` is re-exported for convenience.
 
 ## Usage
 
@@ -40,15 +40,15 @@ You need a Pierre org name and private key to create the SDK client.
 
 ```ts
 import { Bash } from 'just-bash';
-import { GitStorage, createGitCommand } from '@pierre/just-code-storage';
+import { Pierre, createGitCommand } from '@pierre/just-code-storage';
 
-const store = new GitStorage({
-  name: process.env.ORG_NAME ?? 'pierre',
-  key: process.env.PIERRE_PRIVATE_KEY!,
+const pierre = new Pierre({
+  org: process.env.ORG_NAME ?? 'pierre',
+  privateKey: process.env.PIERRE_PRIVATE_KEY!,
 });
 
 const git = createGitCommand({
-  store,
+  pierre,
   author: {
     name: 'agent',
     email: 'agent@example.com',
@@ -90,7 +90,7 @@ git push
 | `clone`     | `git clone my-repo worktree`     | Select an existing repository and materialize its files into the VFS.      |
 | `add`       | `git add README.md`              | Stage files or directories from the selected worktree for commit.          |
 | `rm`        | `git rm old.txt`                 | Remove paths from the VFS and stage deletions.                             |
-| `commit`    | `git commit -m "initial"`        | Send staged changes through the SDK commit builder.                        |
+| `commit`    | `git commit -m "initial"`        | Send staged changes through the SDK commit API.                            |
 | `status`    | `git status`                     | Show staged and unstaged VFS changes against the selected branch.          |
 | `log`       | `git log --oneline -n 5`         | List commits for the current branch, optionally limited or path-filtered.  |
 | `show`      | `git show HEAD`                  | Show a commit and its diff, or emit file bytes with `<ref>:<path>`.        |
@@ -163,7 +163,7 @@ Optional environment variables:
 - `CODE_STORAGE_REPO`: browse an existing repository after the collaboration
   demo.
 - `CODE_STORAGE_API_BASE_URL`: override the code.storage API endpoint.
-- `CODE_STORAGE_STORAGE_BASE_URL`: override the storage endpoint.
+- `CODE_STORAGE_STORAGE_BASE_URL`: override the Git host.
 - `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL`: set the commit author used by the
   demo.
 

@@ -1,10 +1,4 @@
-import type {
-  BlameLine,
-  BranchInfo,
-  CommitInfo,
-  FileDiff,
-  TagInfo,
-} from '@pierre/storage';
+import type { BlameLine, Branch, Commit, FileDiff, Tag } from '@pierre/sdk';
 
 export function shortSha(sha: string): string {
   return sha.slice(0, 7);
@@ -14,7 +8,7 @@ export function subject(message: string): string {
   return message.split(/\r?\n/, 1)[0] || '(no message)';
 }
 
-export function formatLog(commits: CommitInfo[], oneline: boolean): string {
+export function formatLog(commits: Commit[], oneline: boolean): string {
   if (oneline) {
     const lines = commits.map(
       (commit) => `${shortSha(commit.sha)} ${subject(commit.message)}`
@@ -24,15 +18,15 @@ export function formatLog(commits: CommitInfo[], oneline: boolean): string {
   return commits.map(formatCommitHeader).join('\n');
 }
 
-export function formatCommitHeader(commit: CommitInfo): string {
+export function formatCommitHeader(commit: Commit): string {
   const message = commit.message
     .split(/\r?\n/)
     .map((line) => `    ${line}`)
     .join('\n');
   return [
     `commit ${commit.sha}`,
-    `Author: ${commit.authorName} <${commit.authorEmail}>`,
-    `Date:   ${formatDate(commit)}`,
+    `Author: ${commit.author_name} <${commit.author_email}>`,
+    `Date:   ${commit.date}`,
     '',
     message,
     '',
@@ -44,7 +38,7 @@ export function formatDiff(files: FileDiff[]): string {
 }
 
 export function formatBranches(
-  branches: BranchInfo[],
+  branches: Branch[],
   currentBranch: string
 ): string {
   return (
@@ -57,7 +51,7 @@ export function formatBranches(
   );
 }
 
-export function formatTags(tags: TagInfo[]): string {
+export function formatTags(tags: Tag[]): string {
   return tags.map((tag) => tag.name).join('\n') + (tags.length > 0 ? '\n' : '');
 }
 
@@ -65,13 +59,9 @@ export function formatBlame(lines: BlameLine[], fileLines: string[]): string {
   return (
     lines
       .map((line) => {
-        const text = fileLines[line.lineNumber - 1] ?? '';
-        return `${shortSha(line.commitSha)} (${line.authorName} ${line.rawAuthorTime} ${line.lineNumber}) ${text}`;
+        const text = fileLines[line.line_number - 1] ?? '';
+        return `${shortSha(line.commit_sha)} (${line.author_name} ${line.author_time} ${line.line_number}) ${text}`;
       })
       .join('\n') + (lines.length > 0 ? '\n' : '')
   );
-}
-
-function formatDate(commit: CommitInfo): string {
-  return commit.rawDate || commit.date.toISOString();
 }

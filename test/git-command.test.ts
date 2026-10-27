@@ -1,29 +1,35 @@
 import {
-  ApiError,
+  NotFoundError,
   RefUpdateError,
-  type CommitBuilder,
-  type CommitFileSource,
-  type CommitResult,
-  type Repo,
-} from '@pierre/storage';
+  type Commit,
+  type CommitFile,
+  type CommitWriteResponse,
+  type Pierre,
+  type ReposCommitsCreateParams,
+  type ReposCreateParams,
+  type ReposFilesMetadataListParams,
+  type ReposMergeParams,
+  type ReposMergeResponse,
+  type ReposTagsCreateParams,
+} from '@pierre/sdk';
 import { describe, expect, test } from 'bun:test';
 import type { CommandContext, IFileSystem } from 'just-bash';
 import path from 'node:path/posix';
 
-import { createGitCommand } from '../src/index.js';
+import { createGitCommand, type Repo } from '../src/index.js';
 
 describe('createGitCommand phase 0', () => {
   test('creates a repo, stages a VFS file, commits it, and logs it', async () => {
-    const builder = new MockCommitBuilder();
-    const repo = makeRepo(builder);
-    const store = {
-      createRepo: async (options: { id?: string; defaultBranch?: string }) => {
-        expect(options).toEqual({ id: 'smoke', defaultBranch: 'main' });
-        return repo;
+    const commits = new MockCommits();
+    const pierre = makePierre({
+      ...commitOperations(commits),
+      'repos.create': async (params: ReposCreateParams) => {
+        expect(params).toEqual({ repo_name: 'smoke', default_branch: 'main' });
+        return { repo_name: 'smoke', message: 'created' };
       },
-    };
+    });
     const command = createGitCommand({
-      store: store as never,
+      pierre,
       author: { name: 'agent', email: 'agent@example.com' },
     });
     const ctx = makeCtx({ '/README.md': '# Hello code.storage\n' });
@@ -51,16 +57,16 @@ describe('createGitCommand phase 0', () => {
       exitCode: 0,
     });
 
-    expect(builder.files).toEqual([
+    expect(commits.files).toEqual([
       {
         path: 'README.md',
-        bytes: [...new TextEncoder().encode('# Hello code.storage\n')],
+        content: new TextEncoder().encode('# Hello code.storage\n'),
       },
     ]);
   });
 
   test('returns a git-style error before a repo is selected', async () => {
-    const command = createGitCommand({ store: {} as never });
+    const command = createGitCommand({ pierre: {} as never });
     await expect(command.execute(['log'], makeCtx())).resolves.toEqual({
       stdout: '',
       stderr: "fatal: not a git repository (run 'git init <id>' first)\n",
@@ -69,7 +75,7 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('rejects unknown subcommands', async () => {
-    const command = createGitCommand({ store: {} as never });
+    const command = createGitCommand({ pierre: {} as never });
     await expect(command.execute(['nope'], makeCtx())).resolves.toEqual({
       stdout: '',
       stderr: "git: 'nope' is not a git command. See 'git --help'.\n",
@@ -78,7 +84,7 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('prints explicit help successfully', async () => {
-    const command = createGitCommand({ store: {} as never });
+    const command = createGitCommand({ pierre: {} as never });
 
     await expect(command.execute(['help'], makeCtx())).resolves.toEqual({
       stdout:
@@ -100,11 +106,13 @@ describe('createGitCommand phase 0', () => {
 
   test('routes every supported operational subcommand', async () => {
     const command = createGitCommand({
-      store: {
-        createRepo: async () => makeRepo(new MockCommitBuilder()),
-        findOne: async () => null,
-      } as never,
-      repo: makeRepo(new MockCommitBuilder()),
+      pierre: makePierre({
+        'repos.create': async () => ({ repo_name: 'smoke', message: '' }),
+        'repos.get': async () => {
+          throw notFoundError();
+        },
+      }),
+      repo: makeRepo(),
     });
     const ctx = makeCtx({ '/README.md': '# Hello code.storage\n' });
     const knownSubcommands = [
@@ -143,24 +151,17 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('status reads metadata from the current branch ref', async () => {
-    let metadataOptions:
-      | (Parameters<Repo['listFilesWithMetadata']>[0] & {
-          recursive?: boolean;
-        })
-      | undefined;
-    const repo = {
-      ...makeRepo(new MockCommitBuilder()),
-      listFilesWithMetadata: async (
-        options: Parameters<Repo['listFilesWithMetadata']>[0] & {
-          recursive?: boolean;
-        }
+    let metadataOptions: ReposFilesMetadataListParams | undefined;
+    const repo = makeRepo({
+      'repos.files.metadata.list': async (
+        params: ReposFilesMetadataListParams
       ) => {
-        metadataOptions = options;
-        return { files: [], commits: {}, ref: 'feature/foo' };
+        metadataOptions = params;
+        return { data: [] };
       },
-    } as Repo;
+    });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
       branch: 'feature/foo',
     });
@@ -178,17 +179,14 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('status treats an unborn branch metadata 404 as an empty baseline', async () => {
-    const repo = {
-      ...makeRepo(new MockCommitBuilder()),
-      listFilesWithMetadata: async () => {
-        throw notFoundError(
-          'https://code.storage/api/v1/repos/files/metadata?ref=main'
-        );
+    const repo = makeRepo({
+      'repos.files.metadata.list': async () => {
+        throw notFoundError();
       },
-      listBranches: async () => ({ branches: [], hasMore: false }),
-    } as Repo;
+      'repos.branches.list': async () => ({ data: [] }),
+    });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
     });
 
@@ -203,37 +201,27 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('status does not treat a missing checked-out branch as unborn', async () => {
-    let metadataOptions:
-      | (Parameters<Repo['listFilesWithMetadata']>[0] & {
-          recursive?: boolean;
-        })
-      | undefined;
-    const repo = {
-      ...makeRepo(new MockCommitBuilder()),
-      listFilesWithMetadata: async (
-        options: Parameters<Repo['listFilesWithMetadata']>[0] & {
-          recursive?: boolean;
-        }
+    let metadataOptions: ReposFilesMetadataListParams | undefined;
+    const repo = makeRepo({
+      'repos.files.metadata.list': async (
+        params: ReposFilesMetadataListParams
       ) => {
-        metadataOptions = options;
-        throw notFoundError(
-          'https://code.storage/api/v1/repos/files/metadata?ref=feature/foo'
-        );
+        metadataOptions = params;
+        throw notFoundError();
       },
-      listBranches: async () => ({
-        branches: [
+      'repos.branches.list': async () => ({
+        data: [
           {
             cursor: 'main',
             name: 'main',
-            headSha: 'abc1234567890',
-            createdAt: '2026-01-01T00:00:00.000Z',
+            head_sha: 'abc1234567890',
+            created_at: '2026-01-01T00:00:00.000Z',
           },
         ],
-        hasMore: false,
       }),
-    } as Repo;
+    });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
       branch: 'feature/foo',
     });
@@ -251,10 +239,9 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('requires commit messages', async () => {
-    const repo = makeRepo(new MockCommitBuilder());
     const command = createGitCommand({
-      store: {} as never,
-      repo,
+      pierre: {} as never,
+      repo: makeRepo(),
     });
     await expect(command.execute(['commit'], makeCtx())).resolves.toEqual({
       stdout: '',
@@ -264,14 +251,14 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('maps SDK ref update conflicts to git-style push errors', async () => {
-    const builder = new MockCommitBuilder(
-      new RefUpdateError('precondition failed', {
-        status: 'precondition_failed',
+    const commits = new MockCommits(
+      new RefUpdateError(412, {
+        result: { status: 'precondition_failed' },
       })
     );
     const command = createGitCommand({
-      store: {} as never,
-      repo: makeRepo(builder),
+      pierre: {} as never,
+      repo: makeRepo(commitOperations(commits)),
     });
     const ctx = makeCtx({ '/README.md': '# Hello code.storage\n' });
 
@@ -288,32 +275,34 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('supplies a default commit message for merge commits', async () => {
-    let mergeOptions: Parameters<Repo['merge']>[0] | undefined;
-    const repo = {
-      ...makeRepo(new MockCommitBuilder()),
-      merge: async (options: Parameters<Repo['merge']>[0]) => {
-        mergeOptions = options;
+    let mergeOptions: ReposMergeParams | undefined;
+    const repo = makeRepo({
+      'repos.merge': async (
+        params: ReposMergeParams
+      ): Promise<ReposMergeResponse> => {
+        mergeOptions = params;
         return {
           result: 'merge_commit',
-          commitSha: 'def4567890abc',
-          treeSha: 'tree',
+          commit_sha: 'def4567890abc',
+          tree_sha: 'tree',
           source: {
             branch: 'docs/collaboration',
+            ref: 'docs/collaboration',
             ephemeral: false,
             sha: 'abc1234567890',
           },
           target: {
             branch: 'main',
             ephemeral: false,
-            oldSha: 'abc1234567890',
-            newSha: 'def4567890abc',
+            old_sha: 'abc1234567890',
+            new_sha: 'def4567890abc',
           },
-          promotedCommits: 1,
+          promoted_commits: 1,
         };
       },
-    } as Repo;
+    });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
       author: { name: 'agent', email: 'agent@example.com' },
     });
@@ -328,41 +317,32 @@ describe('createGitCommand phase 0', () => {
     });
 
     expect(mergeOptions).toMatchObject({
-      sourceBranch: 'docs/collaboration',
-      targetBranch: 'main',
+      repo_name: 'smoke',
+      source_ref: 'docs/collaboration',
+      target_branch: 'main',
       strategy: 'merge',
-      commitMessage: "Merge branch 'docs/collaboration' into main",
+      commit_message: "Merge branch 'docs/collaboration' into main",
       author: { name: 'agent', email: 'agent@example.com' },
     });
   });
 
   test('resolves HEAD before creating a tag', async () => {
-    let tagOptions: Parameters<Repo['createTag']>[0] | undefined;
-    const repo = {
-      ...makeRepo(new MockCommitBuilder()),
-      getCommit: async () => ({
-        commit: {
-          sha: 'abc1234567890abc1234567890abc1234567890ab',
-          message: 'Initial commit',
-          authorName: 'agent',
-          authorEmail: 'agent@example.com',
-          committerName: 'agent',
-          committerEmail: 'agent@example.com',
-          date: new Date('2026-01-01T00:00:00.000Z'),
-          rawDate: '2026-01-01T00:00:00.000Z',
-        },
+    let tagOptions: ReposTagsCreateParams | undefined;
+    const repo = makeRepo({
+      'repos.commits.get': async () => ({
+        commit: makeCommit('abc1234567890abc1234567890abc1234567890ab'),
       }),
-      createTag: async (options: Parameters<Repo['createTag']>[0]) => {
-        tagOptions = options;
+      'repos.tags.create': async (params: ReposTagsCreateParams) => {
+        tagOptions = params;
         return {
-          name: options.name,
-          sha: options.target,
+          name: params.name,
+          sha: params.ref,
           message: 'created',
         };
       },
-    } as Repo;
+    });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
     });
 
@@ -375,20 +355,25 @@ describe('createGitCommand phase 0', () => {
     });
 
     expect(tagOptions).toEqual({
+      repo_name: 'smoke',
       name: 'v0',
-      target: 'abc1234567890abc1234567890abc1234567890ab',
+      ref: 'abc1234567890abc1234567890abc1234567890ab',
     });
   });
 
   test('rejects paths outside a cloned working tree', async () => {
-    const repo = {
-      ...makeRepo(new MockCommitBuilder()),
-      listFiles: async () => ({ paths: [], ref: 'main' }),
-    } as Repo;
     const command = createGitCommand({
-      store: {
-        findOne: async () => repo,
-      } as never,
+      pierre: makePierre({
+        'repos.get': async () => ({
+          repo_name: 'smoke',
+          default_branch: 'main',
+          created_at: '2026-01-01T00:00:00.000Z',
+        }),
+        'repos.files.list': async () => ({
+          data: [],
+          body: { paths: [], ref: 'main' },
+        }),
+      }),
     });
     const ctx = makeCtx(
       { '/home/user/COLLABORATION.md': 'outside worktree\n' },
@@ -413,90 +398,90 @@ describe('createGitCommand phase 0', () => {
   });
 });
 
-class MockCommitBuilder implements CommitBuilder {
-  readonly files: Array<{ path: string; bytes: number[] }> = [];
+type Operation = (...args: never[]) => unknown;
 
-  constructor(private readonly sendError?: unknown) {}
-
-  addFile(pathName: string, source: CommitFileSource): CommitBuilder {
-    this.files.push({ path: pathName, bytes: bytesFromSource(source) });
-    return this;
+function makePierre(operations: Record<string, Operation> = {}): Pierre {
+  const root: Record<string, unknown> = {};
+  for (const [id, operation] of Object.entries(operations)) {
+    const names = id.split('.');
+    let node = root;
+    for (const name of names.slice(0, -1)) {
+      node = (node[name] ??= {}) as Record<string, unknown>;
+    }
+    node[names[names.length - 1]] = operation;
   }
+  return root as unknown as Pierre;
+}
 
-  addFileFromString(pathName: string, contents: string): CommitBuilder {
-    this.files.push({
-      path: pathName,
-      bytes: [...new TextEncoder().encode(contents)],
-    });
-    return this;
-  }
+function makeRepo(operations: Record<string, Operation> = {}): Repo {
+  return {
+    pierre: makePierre({
+      ...commitOperations(new MockCommits()),
+      ...operations,
+    }),
+    id: 'smoke',
+    defaultBranch: 'main',
+  };
+}
 
-  deletePath(): CommitBuilder {
-    return this;
-  }
+class MockCommits {
+  readonly files: CommitFile[] = [];
 
-  async send(): Promise<CommitResult> {
-    if (this.sendError) {
-      throw this.sendError;
+  constructor(private readonly createError?: unknown) {}
+
+  async create(params: ReposCommitsCreateParams): Promise<CommitWriteResponse> {
+    for await (const file of params.files) {
+      this.files.push(file);
+    }
+    if (this.createError) {
+      throw this.createError;
     }
 
     return {
-      commitSha: 'abc1234567890',
-      treeSha: 'tree',
-      targetBranch: 'main',
-      packBytes: 32,
-      blobCount: this.files.length,
-      refUpdate: {
+      commit: {
+        commit_sha: 'abc1234567890',
+        tree_sha: 'tree',
+        target_branch: 'main',
+        pack_bytes: 32,
+        blob_count: this.files.length,
+      },
+      result: {
         branch: 'main',
-        oldSha: '0000000000000000000000000000000000000000',
-        newSha: 'abc1234567890',
+        target_branch: 'main',
+        old_sha: '0000000000000000000000000000000000000000',
+        new_sha: 'abc1234567890',
+        status: 'ok',
+        success: true,
       },
     };
   }
 }
 
-function bytesFromSource(source: CommitFileSource): number[] {
-  if (source instanceof Uint8Array) {
-    return [...source];
-  }
-  if (typeof source === 'string') {
-    return [...new TextEncoder().encode(source)];
-  }
-  throw new Error('mock only supports string and Uint8Array sources');
-}
-
-function makeRepo(builder: CommitBuilder): Repo {
+function commitOperations(commits: MockCommits): Record<string, Operation> {
   return {
-    id: 'smoke',
-    defaultBranch: 'main',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    createCommit: () => builder,
-    listCommits: async () => ({
-      commits: [
-        {
-          sha: 'abc1234567890',
-          message: 'Initial commit',
-          authorName: 'agent',
-          authorEmail: 'agent@example.com',
-          committerName: 'agent',
-          committerEmail: 'agent@example.com',
-          date: new Date('2026-01-01T00:00:00.000Z'),
-          rawDate: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-      hasMore: false,
+    'repos.commits.create': (params: ReposCommitsCreateParams) =>
+      commits.create(params),
+    'repos.commits.list': async () => ({
+      data: [makeCommit('abc1234567890')],
     }),
-  } as unknown as Repo;
+  };
 }
 
-function notFoundError(url: string): ApiError {
-  return new ApiError({
-    message: 'not found',
-    status: 404,
-    statusText: 'Not Found',
-    method: 'GET',
-    url,
-  });
+function makeCommit(sha: string): Commit {
+  return {
+    sha,
+    message: 'Initial commit',
+    author_name: 'agent',
+    author_email: 'agent@example.com',
+    committer_name: 'agent',
+    committer_email: 'agent@example.com',
+    date: '2026-01-01T00:00:00.000Z',
+    parent_shas: [],
+  };
+}
+
+function notFoundError(): NotFoundError {
+  return new NotFoundError(404, { code: 'not_found', detail: 'not found' });
 }
 
 function makeCtx(

@@ -7,7 +7,7 @@
 
 import { Bash } from 'just-bash';
 
-import { GitStorage, createGitCommand } from '../src/index.js';
+import { Pierre, createGitCommand } from '../src/index.js';
 
 const key = process.env.PIERRE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
@@ -17,11 +17,11 @@ if (!key) {
   process.exit(0);
 }
 
-const store = new GitStorage({
-  name: process.env.ORG_NAME ?? 'pierre',
-  key,
-  apiBaseUrl: process.env.CODE_STORAGE_API_BASE_URL,
-  storageBaseUrl: process.env.CODE_STORAGE_STORAGE_BASE_URL,
+const pierre = new Pierre({
+  org: process.env.ORG_NAME ?? 'pierre',
+  privateKey: key,
+  baseUrl: process.env.CODE_STORAGE_API_BASE_URL || undefined,
+  gitHost: process.env.CODE_STORAGE_STORAGE_BASE_URL || undefined,
 });
 
 const author = {
@@ -108,7 +108,7 @@ function createGitShell(name: string): Bash {
   return new Bash({
     customCommands: [
       createGitCommand({
-        store,
+        pierre,
         author: {
           ...author,
           name,
