@@ -5,9 +5,10 @@
  *   PIERRE_PRIVATE_KEY="$(cat key.pem)" ORG_NAME=my-org bun examples/demo.ts
  */
 
+import { NotFoundError } from '@pierre/sdk';
 import { Bash } from 'just-bash';
 
-import { GitStorage, createGitCommand } from '../src/index.js';
+import { Pierre, createGitCommand, type Repo } from '../src/index.js';
 
 const key = process.env.PIERRE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
@@ -17,11 +18,11 @@ if (!key) {
   process.exit(0);
 }
 
-const store = new GitStorage({
-  name: process.env.ORG_NAME ?? 'pierre',
-  key,
-  apiBaseUrl: process.env.CODE_STORAGE_API_BASE_URL,
-  storageBaseUrl: process.env.CODE_STORAGE_STORAGE_BASE_URL,
+const store = new Pierre({
+  org: process.env.ORG_NAME ?? 'pierre',
+  privateKey: key,
+  baseUrl: process.env.CODE_STORAGE_API_BASE_URL || undefined,
+  gitHost: process.env.CODE_STORAGE_STORAGE_BASE_URL || undefined,
 });
 
 const author = {
@@ -134,11 +135,23 @@ async function runCollaborativeDemo(): Promise<void> {
 }
 
 async function runBrowseDemo(repoId: string): Promise<void> {
-  const repo = await store.findOne({ id: repoId });
-  if (!repo) {
+  const found = await store.repos
+    .get({ repo_name: repoId })
+    .catch((error: unknown) => {
+      if (error instanceof NotFoundError) {
+        return null;
+      }
+      throw error;
+    });
+  if (!found) {
     console.log(`Skipping browse demo: ${repoId} was not found.`);
     return;
   }
+  const repo: Repo = {
+    pierre: store,
+    id: found.repo_name,
+    defaultBranch: found.default_branch,
+  };
 
   const bash = createShell(author.name, repo);
 
@@ -150,15 +163,12 @@ async function runBrowseDemo(repoId: string): Promise<void> {
   ]);
 }
 
-function createShell(
-  name: string,
-  repo?: Awaited<ReturnType<typeof store.findOne>>
-): Bash {
+function createShell(name: string, repo?: Repo): Bash {
   return new Bash({
     customCommands: [
       createGitCommand({
         store,
-        repo: repo ?? undefined,
+        repo,
         author: {
           ...author,
           name,

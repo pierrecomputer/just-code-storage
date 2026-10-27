@@ -1,4 +1,4 @@
-export { GitStorage } from '@pierre/storage';
-export type { CommitSignature, GitStorageOptions, Repo } from '@pierre/storage';
+export { Pierre } from '@pierre/sdk';
+export type { GitIdentity, PierreOptions } from '@pierre/sdk';
 export { createGitCommand } from './git-command.js';
-export type { GitCommandOptions, GitState, StageEntry } from './types.js';
+export type { GitCommandOptions, GitState, Repo, StageEntry } from './types.js';

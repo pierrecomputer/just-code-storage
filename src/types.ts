@@ -1,10 +1,16 @@
-import type { CommitSignature, GitStorage, Repo } from '@pierre/storage';
+import type { GitIdentity, Pierre } from '@pierre/sdk';
+
+export interface Repo {
+  readonly pierre: Pierre;
+  readonly id: string;
+  readonly defaultBranch: string;
+}
 
 export interface GitCommandOptions {
-  store: GitStorage;
+  store: Pierre;
   repo?: Repo;
   branch?: string;
-  author?: CommitSignature;
+  author?: GitIdentity;
 }
 
 export interface StageEntry {

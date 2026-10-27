@@ -1,4 +1,4 @@
-import type { Repo } from '@pierre/storage';
+import { NotFoundError } from '@pierre/sdk';
 import type { CommandContext, ExecResult } from 'just-bash';
 
 import { basenamePath } from '../path.js';
@@ -24,13 +24,24 @@ export async function gitClone(
     return fail('usage: git clone <repo-id> [<dir>]\n', 129);
   }
   const dir = args[1] ?? basenamePath(repoId);
-  const repo = await opts.store.findOne({ id: repoId });
-  if (!repo) {
+  const found = await opts.store.repos
+    .get({ repo_name: repoId })
+    .catch((error: unknown) => {
+      if (error instanceof NotFoundError) {
+        return null;
+      }
+      throw error;
+    });
+  if (!found) {
     return fail(`fatal: repository '${repoId}' was not found\n`, 128);
   }
 
-  state.repo = repo;
-  state.branch = repo.defaultBranch;
+  state.repo = {
+    pierre: opts.store,
+    id: found.repo_name,
+    defaultBranch: found.default_branch,
+  };
+  state.branch = found.default_branch;
   state.stage.clear();
   state.cloneDir = ctx.fs.resolvePath(ctx.cwd, dir);
   await ctx.fs.mkdir(state.cloneDir, { recursive: true });
@@ -53,9 +64,11 @@ export async function gitFetch(
   _args: string[]
 ): Promise<ExecResult> {
   const repo = requireRepo(state);
-  const branches = await repo.listBranches();
-  const lines = branches.branches.map(
-    (branch) => `From code.storage/${repo.id} ${branch.name} ${branch.headSha}`
+  const branches = await repo.pierre.repos.branches.list({
+    repo_name: repo.id,
+  });
+  const lines = branches.data.map(
+    (branch) => `From code.storage/${repo.id} ${branch.name} ${branch.head_sha}`
   );
   return ok(lines.join('\n') + (lines.length > 0 ? '\n' : ''));
 }
@@ -83,14 +96,16 @@ async function materializeRemote(
   const root = state.cloneDir ?? ctx.cwd;
   await ctx.fs.mkdir(root, { recursive: true });
 
-  const listing = await repo.listFiles({
+  const listing = await repo.pierre.repos.files.list({
+    repo_name: repo.id,
     ref: state.branch,
     recursive: true,
-  } as Parameters<Repo['listFiles']>[0] & { recursive?: boolean });
+  });
   let count = 0;
-  for (const repoPath of listing.paths) {
+  for (const repoPath of listing.body.paths) {
     const target = fsPathForRepoPath(state, ctx, repoPath);
-    const response = await repo.getFileStream({
+    const response = await repo.pierre.repos.files.get({
+      repo_name: repo.id,
       ref: state.branch,
       path: repoPath,
     });
