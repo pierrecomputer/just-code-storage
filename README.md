@@ -42,13 +42,13 @@ You need a Pierre org name and private key to create the SDK client.
 import { Bash } from 'just-bash';
 import { Pierre, createGitCommand } from '@pierre/just-code-storage';
 
-const store = new Pierre({
+const pierre = new Pierre({
   org: process.env.ORG_NAME ?? 'pierre',
   privateKey: process.env.PIERRE_PRIVATE_KEY!,
 });
 
 const git = createGitCommand({
-  store,
+  pierre,
   author: {
     name: 'agent',
     email: 'agent@example.com',

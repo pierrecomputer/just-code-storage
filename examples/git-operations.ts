@@ -17,7 +17,7 @@ if (!key) {
   process.exit(0);
 }
 
-const store = new Pierre({
+const pierre = new Pierre({
   org: process.env.ORG_NAME ?? 'pierre',
   privateKey: key,
   baseUrl: process.env.CODE_STORAGE_API_BASE_URL || undefined,
@@ -108,7 +108,7 @@ function createGitShell(name: string): Bash {
   return new Bash({
     customCommands: [
       createGitCommand({
-        store,
+        pierre,
         author: {
           ...author,
           name,

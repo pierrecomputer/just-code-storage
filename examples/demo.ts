@@ -18,7 +18,7 @@ if (!key) {
   process.exit(0);
 }
 
-const store = new Pierre({
+const pierre = new Pierre({
   org: process.env.ORG_NAME ?? 'pierre',
   privateKey: key,
   baseUrl: process.env.CODE_STORAGE_API_BASE_URL || undefined,
@@ -135,7 +135,7 @@ async function runCollaborativeDemo(): Promise<void> {
 }
 
 async function runBrowseDemo(repoId: string): Promise<void> {
-  const found = await store.repos
+  const found = await pierre.repos
     .get({ repo_name: repoId })
     .catch((error: unknown) => {
       if (error instanceof NotFoundError) {
@@ -148,7 +148,7 @@ async function runBrowseDemo(repoId: string): Promise<void> {
     return;
   }
   const repo: Repo = {
-    pierre: store,
+    pierre,
     id: found.repo_name,
     defaultBranch: found.default_branch,
   };
@@ -167,7 +167,7 @@ function createShell(name: string, repo?: Repo): Bash {
   return new Bash({
     customCommands: [
       createGitCommand({
-        store,
+        pierre,
         repo,
         author: {
           ...author,

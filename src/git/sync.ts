@@ -15,7 +15,7 @@ import { commitStagedOrAll } from './write.js';
 
 export async function gitClone(
   state: GitState,
-  opts: Pick<GitCommandOptions, 'store'>,
+  opts: Pick<GitCommandOptions, 'pierre'>,
   args: string[],
   ctx: CommandContext
 ): Promise<ExecResult> {
@@ -24,7 +24,7 @@ export async function gitClone(
     return fail('usage: git clone <repo-id> [<dir>]\n', 129);
   }
   const dir = args[1] ?? basenamePath(repoId);
-  const found = await opts.store.repos
+  const found = await opts.pierre.repos
     .get({ repo_name: repoId })
     .catch((error: unknown) => {
       if (error instanceof NotFoundError) {
@@ -37,7 +37,7 @@ export async function gitClone(
   }
 
   state.repo = {
-    pierre: opts.store,
+    pierre: opts.pierre,
     id: found.repo_name,
     defaultBranch: found.default_branch,
   };

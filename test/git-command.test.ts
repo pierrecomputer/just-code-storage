@@ -21,7 +21,7 @@ import { createGitCommand, type Repo } from '../src/index.js';
 describe('createGitCommand phase 0', () => {
   test('creates a repo, stages a VFS file, commits it, and logs it', async () => {
     const commits = new MockCommits();
-    const store = makePierre({
+    const pierre = makePierre({
       ...commitOperations(commits),
       'repos.create': async (params: ReposCreateParams) => {
         expect(params).toEqual({ repo_name: 'smoke', default_branch: 'main' });
@@ -29,7 +29,7 @@ describe('createGitCommand phase 0', () => {
       },
     });
     const command = createGitCommand({
-      store,
+      pierre,
       author: { name: 'agent', email: 'agent@example.com' },
     });
     const ctx = makeCtx({ '/README.md': '# Hello code.storage\n' });
@@ -66,7 +66,7 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('returns a git-style error before a repo is selected', async () => {
-    const command = createGitCommand({ store: {} as never });
+    const command = createGitCommand({ pierre: {} as never });
     await expect(command.execute(['log'], makeCtx())).resolves.toEqual({
       stdout: '',
       stderr: "fatal: not a git repository (run 'git init <id>' first)\n",
@@ -75,7 +75,7 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('rejects unknown subcommands', async () => {
-    const command = createGitCommand({ store: {} as never });
+    const command = createGitCommand({ pierre: {} as never });
     await expect(command.execute(['nope'], makeCtx())).resolves.toEqual({
       stdout: '',
       stderr: "git: 'nope' is not a git command. See 'git --help'.\n",
@@ -84,7 +84,7 @@ describe('createGitCommand phase 0', () => {
   });
 
   test('prints explicit help successfully', async () => {
-    const command = createGitCommand({ store: {} as never });
+    const command = createGitCommand({ pierre: {} as never });
 
     await expect(command.execute(['help'], makeCtx())).resolves.toEqual({
       stdout:
@@ -106,7 +106,7 @@ describe('createGitCommand phase 0', () => {
 
   test('routes every supported operational subcommand', async () => {
     const command = createGitCommand({
-      store: makePierre({
+      pierre: makePierre({
         'repos.create': async () => ({ repo_name: 'smoke', message: '' }),
         'repos.get': async () => {
           throw notFoundError();
@@ -161,7 +161,7 @@ describe('createGitCommand phase 0', () => {
       },
     });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
       branch: 'feature/foo',
     });
@@ -186,7 +186,7 @@ describe('createGitCommand phase 0', () => {
       'repos.branches.list': async () => ({ data: [] }),
     });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
     });
 
@@ -221,7 +221,7 @@ describe('createGitCommand phase 0', () => {
       }),
     });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
       branch: 'feature/foo',
     });
@@ -240,7 +240,7 @@ describe('createGitCommand phase 0', () => {
 
   test('requires commit messages', async () => {
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo: makeRepo(),
     });
     await expect(command.execute(['commit'], makeCtx())).resolves.toEqual({
@@ -257,7 +257,7 @@ describe('createGitCommand phase 0', () => {
       })
     );
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo: makeRepo(commitOperations(commits)),
     });
     const ctx = makeCtx({ '/README.md': '# Hello code.storage\n' });
@@ -302,7 +302,7 @@ describe('createGitCommand phase 0', () => {
       },
     });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
       author: { name: 'agent', email: 'agent@example.com' },
     });
@@ -342,7 +342,7 @@ describe('createGitCommand phase 0', () => {
       },
     });
     const command = createGitCommand({
-      store: {} as never,
+      pierre: {} as never,
       repo,
     });
 
@@ -363,7 +363,7 @@ describe('createGitCommand phase 0', () => {
 
   test('rejects paths outside a cloned working tree', async () => {
     const command = createGitCommand({
-      store: makePierre({
+      pierre: makePierre({
         'repos.get': async () => ({
           repo_name: 'smoke',
           default_branch: 'main',

@@ -7,7 +7,7 @@ export interface Repo {
 }
 
 export interface GitCommandOptions {
-  store: Pierre;
+  pierre: Pierre;
   repo?: Repo;
   branch?: string;
   author?: GitIdentity;
