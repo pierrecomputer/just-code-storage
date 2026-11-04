@@ -1,8 +1,7 @@
-import type { Repo } from '@pierre/storage';
 import type { CommandContext, ExecResult } from 'just-bash';
 
 import { formatBranches, formatTags, shortSha } from '../format.js';
-import type { GitCommandOptions, GitState } from '../types.js';
+import type { GitCommandOptions, GitState, Repo } from '../types.js';
 import {
   fail,
   getAuthor,
@@ -18,26 +17,32 @@ export async function gitBranch(
 ): Promise<ExecResult> {
   const repo = requireRepo(state);
   if (args.length === 0 || (args.length === 1 && args[0] === '-a')) {
-    const result = await repo.listBranches();
-    return ok(formatBranches(result.branches, state.branch));
+    const result = await repo.pierre.repos.branches.list({
+      repo_name: repo.id,
+    });
+    return ok(formatBranches(result.data, state.branch));
   }
   if (args[0] === '-d') {
     const name = args[1];
     if (!name) {
       return fail('error: branch name required\n', 129);
     }
-    await repo.deleteBranch({ name });
+    await repo.pierre.repos.branches.delete({
+      repo_name: repo.id,
+      target_branch: name,
+    });
     if (state.branch === name) {
       state.branch = repo.defaultBranch;
     }
     return ok(`Deleted branch ${name}.\n`);
   }
   if (args.length === 1 && !args[0].startsWith('-')) {
-    const result = await repo.createBranch({
-      baseRef: state.branch,
-      targetBranch: args[0],
+    const result = await repo.pierre.repos.branches.create({
+      repo_name: repo.id,
+      base_ref: state.branch,
+      target_branch: args[0],
     });
-    return ok(`Branch ${result.targetBranch} set up.\n`);
+    return ok(`Branch ${result.target_branch} set up.\n`);
   }
   return fail('usage: git branch [-a] [-d <name>] [<name>]\n', 129);
 }
@@ -48,15 +53,15 @@ export async function gitTag(
 ): Promise<ExecResult> {
   const repo = requireRepo(state);
   if (args.length === 0) {
-    const result = await repo.listTags();
-    return ok(formatTags(result.tags));
+    const result = await repo.pierre.repos.tags.list({ repo_name: repo.id });
+    return ok(formatTags(result.data));
   }
   if (args[0] === '-d') {
     const name = args[1];
     if (!name) {
       return fail('error: tag name required\n', 129);
     }
-    await repo.deleteTag({ name });
+    await repo.pierre.repos.tags.delete({ repo_name: repo.id, tag_name: name });
     return ok(`Deleted tag '${name}'.\n`);
   }
   const [name, target = 'HEAD'] = args;
@@ -64,9 +69,10 @@ export async function gitTag(
     return fail('usage: git tag [<name> <sha>] | git tag -d <name>\n', 129);
   }
   const commitSha = await resolveCommitSha(repo, state, target);
-  const result = await repo.createTag({
+  const result = await repo.pierre.repos.tags.create({
+    repo_name: repo.id,
     name,
-    target: commitSha,
+    ref: commitSha,
   });
   return ok(`${result.name} ${shortSha(result.sha)}\n`);
 }
@@ -82,7 +88,11 @@ export async function gitCheckout(
     if (!targetBranch) {
       return fail('usage: git checkout -b <new-branch> [<base>]\n', 129);
     }
-    await repo.createBranch({ baseRef, targetBranch });
+    await repo.pierre.repos.branches.create({
+      repo_name: repo.id,
+      base_ref: baseRef,
+      target_branch: targetBranch,
+    });
     state.branch = targetBranch;
     state.stage.clear();
     return ok(`Switched to a new branch '${targetBranch}'\n`);
@@ -119,24 +129,25 @@ export async function gitMerge(
   if (!sourceBranch || sourceBranch.startsWith('-')) {
     return fail('usage: git merge <source-branch>\n', 129);
   }
-  const result = await repo.merge({
-    sourceBranch,
-    targetBranch: state.branch,
+  const result = await repo.pierre.repos.merge({
+    repo_name: repo.id,
+    source_ref: sourceBranch,
+    target_branch: state.branch,
     strategy: 'merge',
-    commitMessage: `Merge branch '${sourceBranch}' into ${state.branch}`,
+    commit_message: `Merge branch '${sourceBranch}' into ${state.branch}`,
     author: getAuthor(opts, ctx),
   });
-  state.headSha = result.target.newSha;
+  state.headSha = result.target.new_sha;
   return ok(
     `Merge made by code.storage '${result.result}' strategy.\n${shortSha(
-      result.target.oldSha
-    )}..${shortSha(result.target.newSha)} ${state.branch}\n`
+      result.target.old_sha
+    )}..${shortSha(result.target.new_sha)} ${state.branch}\n`
   );
 }
 
 async function verifyBranch(repo: Repo, name: string) {
-  const result = await repo.listBranches();
-  if (!result.branches.some((branch) => branch.name === name)) {
+  const result = await repo.pierre.repos.branches.list({ repo_name: repo.id });
+  if (!result.data.some((branch) => branch.name === name)) {
     throw new GitAbort(
       fail(`error: pathspec '${name}' did not match any branch\n`, 1)
     );
@@ -151,6 +162,9 @@ async function resolveCommitSha(
   if (target === 'HEAD' && state.headSha) {
     return state.headSha;
   }
-  const { commit } = await repo.getCommit({ sha: resolveRef(state, target) });
+  const { commit } = await repo.pierre.repos.commits.get({
+    repo_name: repo.id,
+    ref: resolveRef(state, target),
+  });
   return commit.sha;
 }

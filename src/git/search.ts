@@ -34,16 +34,18 @@ export async function gitGrep(
     return fail('usage: git grep [-i] [-n] <pattern> [-- <glob>]\n', 129);
   }
 
-  const result = await repo.grep({
+  const result = await repo.pierre.repos.grep({
+    repo_name: repo.id,
     ref: state.branch,
-    query: { pattern, caseSensitive },
-    fileFilters: includeGlobs.length > 0 ? { includeGlobs } : undefined,
+    query: { pattern, case_sensitive: caseSensitive },
+    file_filters:
+      includeGlobs.length > 0 ? { include_globs: includeGlobs } : undefined,
   });
 
   const lines = result.matches.flatMap((match) =>
     match.lines.map((line) =>
       showLineNumbers
-        ? `${match.path}:${line.lineNumber}:${line.text}`
+        ? `${match.path}:${line.line_number}:${line.text}`
         : `${match.path}:${line.text}`
     )
   );

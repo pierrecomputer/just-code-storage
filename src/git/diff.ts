@@ -22,18 +22,26 @@ export async function gitDiff(
     if (!base || !branch) {
       return fail('fatal: invalid revision range\n', 128);
     }
-    const result = await repo.getBranchDiff({ base, branch });
+    const result = await repo.pierre.repos.diff.get({
+      repo_name: repo.id,
+      ref: branch,
+      base_ref: base,
+    });
     return ok(formatDiff(result.files));
   }
 
   if (looksLikeSha(target)) {
-    const result = await repo.getCommitDiff({ sha: target });
+    const result = await repo.pierre.repos.diff.get({
+      repo_name: repo.id,
+      ref: target,
+    });
     return ok(formatDiff(result.files));
   }
 
-  const result = await repo.getBranchDiff({
-    base: target,
-    branch: state.branch,
+  const result = await repo.pierre.repos.diff.get({
+    repo_name: repo.id,
+    ref: state.branch,
+    base_ref: target,
   });
   return ok(formatDiff(result.files));
 }

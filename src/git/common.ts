@@ -1,13 +1,8 @@
-import {
-  ApiError,
-  RefUpdateError,
-  type CommitSignature,
-  type Repo,
-} from '@pierre/storage';
+import { APIError, RefUpdateError, type GitIdentity } from '@pierre/sdk';
 import type { CommandContext, ExecResult, IFileSystem } from 'just-bash';
 
 import { dirnamePath, joinPath, normalizePath, relativePath } from '../path.js';
-import type { GitCommandOptions, GitState } from '../types.js';
+import type { GitCommandOptions, GitState, Repo } from '../types.js';
 
 export class GitAbort extends Error {
   constructor(readonly result: ExecResult) {
@@ -63,7 +58,7 @@ export function sdkError(error: unknown): ExecResult {
   }
 
   const status =
-    error instanceof ApiError ? error.status : readNumber(error, 'status');
+    error instanceof APIError ? error.status : readNumber(error, 'status');
   if (typeof status === 'number') {
     if (status === 401) {
       return fail('fatal: code.storage authentication failed\n', 128);
@@ -96,16 +91,17 @@ export function sdkError(error: unknown): ExecResult {
 }
 
 function refUpdateError(error: RefUpdateError): ExecResult {
-  if (error.reason === 'unauthorized') {
+  const reason = error.result.status;
+  if (reason === 'unauthorized') {
     return fail('fatal: code.storage authentication failed\n', 128);
   }
-  if (error.reason === 'forbidden') {
+  if (reason === 'forbidden') {
     return fail('fatal: code.storage permission denied\n', 128);
   }
-  if (error.reason === 'not_found') {
+  if (reason === 'not_found') {
     return fail('fatal: code.storage object was not found\n', 128);
   }
-  if (error.reason === 'conflict' || error.reason === 'precondition_failed') {
+  if (reason === 'conflict' || reason === 'precondition_failed') {
     return fail(
       'error: failed to push some refs to code.storage\nhint: fetch or pull before retrying.\n',
       1
@@ -167,7 +163,7 @@ export function parsePathspecs(args: string[]): string[] {
 export function getAuthor(
   opts: Pick<GitCommandOptions, 'author'>,
   ctx: CommandContext
-): CommitSignature {
+): GitIdentity {
   const name =
     opts.author?.name ??
     ctx.env.get('GIT_AUTHOR_NAME') ??

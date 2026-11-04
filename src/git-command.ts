@@ -104,7 +104,7 @@ export function createGitCommand(opts: GitCommandOptions): Command {
 }
 
 async function gitInit(
-  opts: Pick<GitCommandOptions, 'store'>,
+  opts: Pick<GitCommandOptions, 'pierre'>,
   state: GitState,
   args: string[]
 ): Promise<ExecResult> {
@@ -113,14 +113,18 @@ async function gitInit(
     return fail('usage: git init <id> [--default-branch <branch>]\n', 129);
   }
 
-  const repo = await opts.store.createRepo({
-    id: repoId,
-    defaultBranch: branch,
+  const created = await opts.pierre.repos.create({
+    repo_name: repoId,
+    default_branch: branch,
   });
-  state.repo = repo;
-  state.branch = repo.defaultBranch || branch;
+  state.repo = {
+    pierre: opts.pierre,
+    id: created.repo_name,
+    defaultBranch: branch,
+  };
+  state.branch = branch;
   state.stage.clear();
   state.headSha = undefined;
   state.cloneDir = undefined;
-  return ok(`Initialized empty code.storage repository ${repo.id}\n`);
+  return ok(`Initialized empty code.storage repository ${created.repo_name}\n`);
 }
